@@ -1,0 +1,148 @@
+:root {
+  --bg: #f3efe6;
+  --panel: #fffdf8;
+  --ink: #18140f;
+  --accent: #c4682d;
+  --accent-2: #2f6f62;
+  --border: #d7c9b7;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at 10% 0%, #fff4df, var(--bg) 60%);
+  color: var(--ink);
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 28px 18px 60px;
+}
+
+.hero h1 { margin: 0; font-size: 2rem; }
+.hero p { margin: 6px 0 0; color: #675649; }
+
+.card {
+  margin-top: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.drop-zone {
+  border: 2px dashed #bd9f84;
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  background: #fffbf4;
+}
+
+.drop-zone.dragover {
+  border-color: var(--accent-2);
+  background: #eef8f5;
+}
+
+.drop-zone input { margin-top: 10px; }
+
+.actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+button, .button-link {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #6e6258;
+}
+
+button.danger {
+  background: #aa3e2b;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-link { background: var(--accent-2); }
+
+.selected-file { margin-top: 10px; color: #4f4338; }
+.muted { color: #7d6f60; }
+.hidden { display: none; }
+
+.status-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.progress-wrap {
+  margin-top: 12px;
+  width: 100%;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow: hidden;
+  background: #f0e6d8;
+}
+
+.progress-bar {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #db8f5c);
+  transition: width 0.35s ease;
+}
+
+.meta-box,
+.diag-box {
+  margin-top: 10px;
+  background: #f4efe6;
+  border: 1px solid #ddcdbb;
+  border-radius: 10px;
+  padding: 10px;
+  max-height: 230px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.jobs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.job-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+  background: #faf2e7;
+  color: #2a231d;
+  border: 1px solid #d5c2ad;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 2px 8px;
+  color: #fff;
+}
+
+.badge-queued { background: #7d6f60; }
+.badge-running { background: #2f6f62; }
+.badge-done { background: #2e8b57; }
+.badge-failed { background: #b03a2e; }
+.badge-cancelled { background: #8d3f31; }

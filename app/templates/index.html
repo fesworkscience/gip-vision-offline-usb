@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offline IFC -> USDZ Converter</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <h1>Offline IFC -> USDZ</h1>
+      <p>Fast режим: без Blender</p>
+    </header>
+
+    <section class="card">
+      <div id="drop-zone" class="drop-zone">
+        <p>Перетащите IFC файл сюда</p>
+        <p class="muted">или выберите файл вручную</p>
+        <input id="file-input" type="file" accept=".ifc" />
+      </div>
+
+      <div class="actions">
+        <button id="start-btn" disabled>Convert (Fast)</button>
+        <button id="diag-btn" class="secondary">Diagnostics</button>
+      </div>
+
+      <div id="selected-file" class="selected-file"></div>
+      <pre id="diag-box" class="diag-box hidden"></pre>
+    </section>
+
+    <section id="status-card" class="card hidden">
+      <h2>Статус задачи</h2>
+      <div class="status-row"><span>ID:</span><code id="job-id">-</code></div>
+      <div class="status-row"><span>Статус:</span><strong id="job-status">-</strong></div>
+      <div class="status-row"><span>Этап:</span><strong id="job-stage">-</strong></div>
+
+      <div class="progress-wrap">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+      <div class="status-row"><span>Прогресс:</span><strong id="job-progress">0%</strong></div>
+      <div class="status-row"><span>Ошибка:</span><span id="job-error">-</span></div>
+
+      <h3>Метаданные</h3>
+      <pre id="job-meta" class="meta-box">-</pre>
+
+      <div class="actions">
+        <button id="cancel-btn" class="danger hidden">Cancel</button>
+        <a id="download-link" class="button-link hidden" href="#">Скачать USDZ</a>
+        <a id="logs-link" class="button-link hidden" href="#">Скачать лог</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Последние задачи</h2>
+      <div id="jobs-list" class="jobs-list muted">Нет задач</div>
+    </section>
+  </main>
+
+  <script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const startBtn = document.getElementById('start-btn');
+    const diagBtn = document.getElementById('diag-btn');
+    const selectedFileEl = document.getElementById('selected-file');
+    const diagBox = document.getElementById('diag-box');
+
+    const statusCard = document.getElementById('status-card');
+    const jobIdEl = document.getElementById('job-id');
+    const jobStatusEl = document.getElementById('job-status');
+    const jobStageEl = document.getElementById('job-stage');
+    const jobProgressEl = document.getElementById('job-progress');
+    const jobErrorEl = document.getElementById('job-error');
+    const jobMetaEl = document.getElementById('job-meta');
+    const progressBar = document.getElementById('progress-bar');
+    const downloadLink = document.getElementById('download-link');
+    const logsLink = document.getElementById('logs-link');
+    const cancelBtn = document.getElementById('cancel-btn');
+    const jobsList = document.getElementById('jobs-list');
+
+    let selectedFile = null;
+    let pollTimer = null;
+    let currentJobId = null;
+
+    function setSelectedFile(file) {
+      selectedFile = file;
+      if (!file) {
+        selectedFileEl.textContent = '';
+        startBtn.disabled = true;
+        return;
+      }
+      selectedFileEl.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
+      startBtn.disabled = !file.name.toLowerCase().endsWith('.ifc');
+    }
+
+    function pretty(obj) {
+      return JSON.stringify(obj || {}, null, 2);
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0] || null;
+      setSelectedFile(file);
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files?.[0] || null;
+      setSelectedFile(file);
+    });
+
+    async function requestDiagnostics() {
+      const res = await fetch('/api/diagnostics');
+      if (!res.ok) throw new Error('Diagnostics error');
+      return res.json();
+    }
+
+    async function createJob(file) {
+      const form = new FormData();
+      form.append('file', file);
+
+      const res = await fetch('/api/jobs', { method: 'POST', body: form });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Не удалось создать задачу');
+      }
+      return res.json();
+    }
+
+    async function fetchJob(jobId) {
+      const res = await fetch(`/api/jobs/${jobId}`);
+      if (!res.ok) throw new Error('Не удалось получить статус');
+      return res.json();
+    }
+
+    async function fetchJobs() {
+      const res = await fetch('/api/jobs?limit=20');
+      if (!res.ok) throw new Error('Не удалось загрузить список задач');
+      return res.json();
+    }
+
+    async function cancelJob(jobId) {
+      const res = await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Не удалось отменить задачу');
+      }
+      return res.json();
+    }
+
+    function renderJob(job) {
+      statusCard.classList.remove('hidden');
+      currentJobId = job.id;
+      jobIdEl.textContent = job.id;
+      jobStatusEl.textContent = job.status;
+      jobStageEl.textContent = job.stage;
+      jobProgressEl.textContent = `${job.progress}%`;
+      progressBar.style.width = `${job.progress}%`;
+      jobErrorEl.textContent = job.error || '-';
+      jobMetaEl.textContent = pretty(job.metadata);
+
+      logsLink.classList.remove('hidden');
+      logsLink.href = `/api/jobs/${job.id}/logs`;
+
+      if (job.status === 'running' || job.status === 'queued') {
+        cancelBtn.classList.remove('hidden');
+      } else {
+        cancelBtn.classList.add('hidden');
+      }
+
+      if (job.status === 'done') {
+        downloadLink.classList.remove('hidden');
+        downloadLink.href = `/api/jobs/${job.id}/download`;
+      } else {
+        downloadLink.classList.add('hidden');
+      }
+    }
+
+    function renderJobsList(items) {
+      if (!items || !items.length) {
+        jobsList.textContent = 'Нет задач';
+        jobsList.classList.add('muted');
+        return;
+      }
+      jobsList.classList.remove('muted');
+      jobsList.innerHTML = items.map((job) => {
+        const badge = `<span class="badge badge-${job.status}">${job.status}</span>`;
+        return `<button class="job-item" data-job-id="${job.id}">
+          <span><code>${job.id}</code></span>
+          <span>${badge}</span>
+          <span>${job.progress}%</span>
+        </button>`;
+      }).join('');
+
+      for (const el of jobsList.querySelectorAll('.job-item')) {
+        el.addEventListener('click', async () => {
+          const jobId = el.dataset.jobId;
+          const job = await fetchJob(jobId);
+          renderJob(job);
+          if (job.status === 'running' || job.status === 'queued') {
+            startPolling(jobId);
+          }
+        });
+      }
+    }
+
+    async function reloadJobsList() {
+      try {
+        const data = await fetchJobs();
+        renderJobsList(data.items || []);
+      } catch (_) {}
+    }
+
+    function stopPolling() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function startPolling(jobId) {
+      stopPolling();
+      pollTimer = setInterval(async () => {
+        try {
+          const job = await fetchJob(jobId);
+          renderJob(job);
+          await reloadJobsList();
+          if (job.status === 'done' || job.status === 'failed' || job.status === 'cancelled') {
+            stopPolling();
+            startBtn.disabled = !selectedFile;
+          }
+        } catch (err) {
+          stopPolling();
+          jobErrorEl.textContent = err.message;
+          startBtn.disabled = !selectedFile;
+        }
+      }, 1500);
+    }
+
+    cancelBtn.addEventListener('click', async () => {
+      if (!currentJobId) return;
+      try {
+        const job = await cancelJob(currentJobId);
+        renderJob(job);
+        await reloadJobsList();
+      } catch (err) {
+        jobErrorEl.textContent = err.message;
+      }
+    });
+
+    diagBtn.addEventListener('click', async () => {
+      try {
+        const data = await requestDiagnostics();
+        diagBox.classList.remove('hidden');
+        diagBox.textContent = pretty(data);
+      } catch (err) {
+        diagBox.classList.remove('hidden');
+        diagBox.textContent = err.message;
+      }
+    });
+
+    startBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      try {
+        startBtn.disabled = true;
+        const data = await createJob(selectedFile);
+        const jobId = data.job_id;
+        renderJob({
+          id: jobId,
+          status: 'queued',
+          stage: 'queued',
+          progress: 0,
+          error: null,
+          metadata: {},
+        });
+        await reloadJobsList();
+        startPolling(jobId);
+      } catch (err) {
+        statusCard.classList.remove('hidden');
+        jobErrorEl.textContent = err.message;
+        startBtn.disabled = false;
+      }
+    });
+
+    reloadJobsList();
+  </script>
+</body>
+</html>
