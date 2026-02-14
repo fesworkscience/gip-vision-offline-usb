@@ -215,6 +215,48 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build release description
+        run: |
+          set -euo pipefail
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+          PREV_TAG="$(git tag --sort=-v:refname 'v*' | awk -v current="$CURRENT_TAG" '$0 != current {print; exit}')"
+
+          if [ -n "${PREV_TAG}" ]; then
+            RANGE="${PREV_TAG}..${CURRENT_TAG}"
+          else
+            RANGE="${CURRENT_TAG}"
+          fi
+
+          COMMITS="$(git log --pretty='- %h %s' "${RANGE}" 2>/dev/null || true)"
+
+          {
+            echo "## Как установить и запустить сервер"
+            echo ""
+            echo "1. Скачайте нужный архив из релиза."
+            echo "2. Распакуйте архив в корень флеш-носителя."
+            echo "3. macOS: запустите \`start.command\` (или \`python3 start.py\` из терминала в папке сборки)."
+            echo "4. Windows: запустите \`run.bat\`."
+            echo "5. Дождитесь запуска локального сервера и откройте адрес \`http://127.0.0.1:8765\`, если браузер не открылся автоматически."
+            echo ""
+            echo "## Коммиты между тегами"
+            if [ -n "${PREV_TAG}" ]; then
+              echo "Диапазон: \`${PREV_TAG}..${CURRENT_TAG}\`"
+            else
+              echo "Предыдущий тег не найден. Показаны коммиты для текущего тега \`${CURRENT_TAG}\`."
+            fi
+            echo ""
+            if [ -n "${COMMITS}" ]; then
+              echo "${COMMITS}"
+            else
+              echo "- Нет данных о коммитах."
+            fi
+          } > release-body.md
+
       - name: Download all release artifacts
         uses: actions/download-artifact@v4
         with:
@@ -225,5 +267,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: all-artifacts/*
-          generate_release_notes: true
+          body_path: release-body.md
           make_latest: latest
