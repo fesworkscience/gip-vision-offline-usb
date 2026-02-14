@@ -24,7 +24,7 @@ USDZ_DIR = STORAGE_ROOT / "usdz"
 VERSION_FILE = CONFIG_DIR / "version.yaml"
 RELEASES_URL = "https://github.com/fesworkscience/gip-vision-offline-usb/releases"
 
-app = FastAPI(title="Offline IFC Converter", version="1.0.4")
+app = FastAPI(title="Offline IFC Converter", version="1.0.5")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
 job_manager = JobManager(base_dir=WORKSPACE_DIR, input_dir=IFC_DIR, output_dir=USDZ_DIR)

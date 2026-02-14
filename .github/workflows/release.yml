@@ -60,6 +60,7 @@ jobs:
           esac
 
           PACKAGE_NAME="gip-vision-offline-usb-${PACKAGE_OS}-${VERSION_TAG}"
+          export PACKAGE_NAME
           PKG_DIR="${BUILD_DIR}/${PACKAGE_NAME}"
 
           rm -rf "$BUILD_DIR" "$ARTIFACT_DIR" "$VENV_DIR"
