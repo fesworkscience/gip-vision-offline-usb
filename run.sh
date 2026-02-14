@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 ENV_DIR="${APP_ENV_DIR:-.offline_env}"
 WHEEL_DIR="${APP_OFFLINE_WHEELS:-.offline_wheels}"
+BOOT_DIR="${APP_BOOT_ENV_DIR:-.offline_boot_env}"
 HOST="${OFFLINE_HOST:-127.0.0.1}"
 PORT="${OFFLINE_PORT:-8765}"
 STRICT="${OFFLINE_STRICT:-1}"
@@ -50,9 +51,17 @@ else
     exit 1
   fi
 
-  rm -rf "$ENV_DIR"
-  "$PYTHON_BOOT" -m venv "$ENV_DIR"
-  PYTHON="$ENV_DIR/bin/python"
+  if [ -n "${APP_BOOT_ENV_DIR:-}" ]; then
+    # Пользователь явно задаёт путь fallback-окружения — используем его.
+    BOOT_DIR="${APP_BOOT_ENV_DIR}"
+    rm -rf "$BOOT_DIR" >/dev/null 2>&1 || true
+  else
+    # Иначе создаём локальный временный bootstrap venv рядом с проектом.
+    BOOT_DIR="$(mktemp -d "${ROOT_DIR}/.offline_boot_XXXXXX")"
+  fi
+
+  "$PYTHON_BOOT" -m venv "$BOOT_DIR"
+  PYTHON="$BOOT_DIR/bin/python"
   "$PYTHON" -m pip install --upgrade pip >/dev/null
 
   if [ -d "$WHEEL_DIR" ] && find "$WHEEL_DIR" -maxdepth 1 -type f -name '*.whl' -print -quit | grep -q .; then
