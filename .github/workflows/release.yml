@@ -18,8 +18,10 @@ jobs:
         include:
           - os: macos-14
             label: macos-arm64
+            package_os: macos
           - os: windows-latest
             label: windows-x64
+            package_os: windows
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +34,7 @@ jobs:
       - name: Build portable zip
         env:
           PACKAGE_LABEL: ${{ matrix.label }}
+          PACKAGE_OS: ${{ matrix.package_os }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -52,12 +55,6 @@ jobs:
             *) VERSION_TAG="v${VERSION_TAG}" ;;
           esac
           VERSION_NUMBER="${VERSION_TAG#v}"
-
-          case "${PACKAGE_LABEL}" in
-            macos-arm64) PACKAGE_OS="macos" ;;
-            windows-x64) PACKAGE_OS="windows" ;;
-            *) PACKAGE_OS="${PACKAGE_LABEL}" ;;
-          esac
 
           PACKAGE_NAME="gip-vision-offline-usb-${PACKAGE_OS}-${VERSION_TAG}"
           export PACKAGE_NAME
@@ -175,17 +172,21 @@ jobs:
 
             if [ "$PYBS_STATUS" -ne 0 ] || [ -z "${PYBS_URL}" ]; then
               echo "[offline-bundle] GitHub API resolver failed, trying releases page fallback"
-              RELEASES_HTML="$(curl --fail --silent --show-error --location \
+              RELEASES_HTML_PATH="$ARTIFACT_DIR/python-standalone-releases-latest.html"
+              curl --fail --silent --show-error --location \
                 --retry 10 \
                 --retry-all-errors \
                 --retry-delay 2 \
                 --retry-max-time 300 \
-                "https://github.com/astral-sh/python-build-standalone/releases/latest")"
-              PYBS_URL="$(printf '%s' "$RELEASES_HTML" | "$ENV_PY" - <<'PY'
+                "https://github.com/astral-sh/python-build-standalone/releases/latest" \
+                -o "$RELEASES_HTML_PATH"
+              PYBS_URL="$("$ENV_PY" - "$RELEASES_HTML_PATH" <<'PY'
           import re
           import sys
+          from pathlib import Path
 
-          html = sys.stdin.read()
+          html_path = Path(sys.argv[1])
+          html = html_path.read_text(encoding="utf-8", errors="ignore")
           pattern = re.compile(
               r'href="([^"]*cpython-3\.11\.[^"]*-aarch64-apple-darwin-install_only(?:_stripped)?\.tar\.gz)"'
           )
@@ -283,7 +284,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: offline-release-${{ matrix.label }}
+          name: gip-vision-offline-usb-${{ matrix.package_os }}-${{ github.ref_name }}
           path: artifacts/*.zip
           retention-days: 30
 
