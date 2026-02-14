@@ -214,9 +214,11 @@ jobs:
           find "$PKG_DIR/config/.offline_env" -type f -name "*.pyc" -delete
           find "$PKG_DIR/app" -type d -name "__pycache__" -prune -exec rm -rf {} +
           find "$PKG_DIR/app" -type f -name "*.pyc" -delete
-          rm -rf "$PKG_DIR/tests"
+          rm -rf "$PKG_DIR/tests" "$PKG_DIR/app/tests"
 
-          if find "$PKG_DIR" -type f \( -path "*/tests/*" -o -name "test_*.py" \) -print -quit | grep -q .; then
+          if find "$PKG_DIR" \
+            \( -path "$PKG_DIR/config/.offline_env" -o -path "$PKG_DIR/config/.offline_python" \) -prune -o \
+            -type f \( -path "*/tests/*" -o -name "test_*.py" \) -print -quit | grep -q .; then
             echo "[offline-bundle] test files leaked into release package"
             exit 1
           fi
