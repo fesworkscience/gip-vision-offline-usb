@@ -3,59 +3,64 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Offline IFC -> USDZ Converter</title>
+  <meta name="theme-color" content="#f5f5f7" />
+  <title>Offline IFC → USDZ</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <main class="container">
-    <header class="hero">
-      <h1>Offline IFC -> USDZ</h1>
-      <p>Fast режим: без Blender</p>
-    </header>
+  <div class="page-shell">
+    <main class="container">
+      <header class="hero">
+        <p class="eyebrow">Конвертация IFC локально</p>
+        <h1>Offline IFC → USDZ Converter</h1>
+        <p>Загрузка, конвертация и получение `.usdz` без лишних зависимостей сервера и без Blender.</p>
+      </header>
 
-    <section class="card">
-      <div id="drop-zone" class="drop-zone">
-        <p>Перетащите IFC файл сюда</p>
-        <p class="muted">или выберите файл вручную</p>
-        <input id="file-input" type="file" accept=".ifc" />
-      </div>
+      <section class="card">
+        <div id="drop-zone" class="drop-zone">
+          <p>Перетащите `.ifc` файл сюда</p>
+          <p class="muted">или выберите вручную</p>
+          <label class="file-trigger" for="file-input">Выбрать IFC файл</label>
+          <input id="file-input" type="file" accept=".ifc" />
+        </div>
 
-      <div class="actions">
-        <button id="start-btn" disabled>Convert (Fast)</button>
-        <button id="diag-btn" class="secondary">Diagnostics</button>
-      </div>
+        <div class="actions">
+          <button id="start-btn" disabled>Конвертировать</button>
+          <button id="diag-btn" class="secondary">Диагностика</button>
+        </div>
 
-      <div id="selected-file" class="selected-file"></div>
-      <pre id="diag-box" class="diag-box hidden"></pre>
-    </section>
+        <div id="selected-file" class="selected-file"></div>
+        <pre id="diag-box" class="diag-box hidden"></pre>
+      </section>
 
-    <section id="status-card" class="card hidden">
-      <h2>Статус задачи</h2>
-      <div class="status-row"><span>ID:</span><code id="job-id">-</code></div>
-      <div class="status-row"><span>Статус:</span><strong id="job-status">-</strong></div>
-      <div class="status-row"><span>Этап:</span><strong id="job-stage">-</strong></div>
+      <section id="status-card" class="card hidden">
+        <h2>Статус задачи</h2>
+        <div class="status-row"><span>ID:</span><code id="job-id">-</code></div>
+        <div class="status-row"><span>Статус:</span><strong id="job-status">-</strong></div>
+        <div class="status-row"><span>Этап:</span><strong id="job-stage">-</strong></div>
 
-      <div class="progress-wrap">
-        <div id="progress-bar" class="progress-bar"></div>
-      </div>
-      <div class="status-row"><span>Прогресс:</span><strong id="job-progress">0%</strong></div>
-      <div class="status-row"><span>Ошибка:</span><span id="job-error">-</span></div>
+        <div class="progress-wrap">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
+        <div class="status-row"><span>Прогресс:</span><strong id="job-progress">0%</strong></div>
+        <div class="status-row"><span>Ошибка:</span><span id="job-error">-</span></div>
 
-      <h3>Метаданные</h3>
-      <pre id="job-meta" class="meta-box">-</pre>
+        <h3>Метаданные</h3>
+        <pre id="job-meta" class="meta-box">-</pre>
 
-      <div class="actions">
-        <button id="cancel-btn" class="danger hidden">Cancel</button>
-        <a id="download-link" class="button-link hidden" href="#">Скачать USDZ</a>
-        <a id="logs-link" class="button-link hidden" href="#">Скачать лог</a>
-      </div>
-    </section>
+        <div class="actions">
+          <button id="cancel-btn" class="danger hidden">Отменить</button>
+          <a id="download-link" class="button-link hidden" href="#">Скачать USDZ</a>
+          <a id="logs-link" class="button-link hidden" href="#">Скачать лог</a>
+        </div>
+      </section>
 
-    <section class="card">
-      <h2>Последние задачи</h2>
-      <div id="jobs-list" class="jobs-list muted">Нет задач</div>
-    </section>
-  </main>
+      <section class="card">
+        <h2>Последние задачи</h2>
+        <div id="jobs-list" class="jobs-list muted">Нет задач</div>
+      </section>
+    </main>
+  </div>
 
   <script>
     const dropZone = document.getElementById('drop-zone');

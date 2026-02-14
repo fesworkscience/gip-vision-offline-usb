@@ -7,10 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import Future
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from .converter import get_diagnostics, run_fast_pipeline
 from .job_manager import JobManager
@@ -21,7 +20,6 @@ WORKSPACE_DIR = PROJECT_DIR / "workspace"
 
 app = FastAPI(title="Offline IFC Converter", version="1.1.0")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
-templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
 job_manager = JobManager(base_dir=WORKSPACE_DIR)
 max_workers = int(os.getenv("OFFLINE_CONVERTER_MAX_WORKERS", "1"))
@@ -150,9 +148,9 @@ def on_shutdown() -> None:
     executor.shutdown(wait=False, cancel_futures=True)
 
 
-@app.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(path=str(APP_DIR / "static" / "index.html"))
 
 
 @app.get("/health")
