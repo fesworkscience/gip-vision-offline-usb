@@ -40,10 +40,9 @@ jobs:
           PKG_DIR="${BUILD_DIR}/gip-vision-offline-usb-${PACKAGE_LABEL}"
           VENV_DIR="${ROOT_DIR}/_bundle_env"
           ARTIFACT_DIR="${ROOT_DIR}/artifacts"
-          WHEEL_DIR="${ROOT_DIR}/_bundle_wheels"
 
-          rm -rf "$BUILD_DIR" "$ARTIFACT_DIR" "$VENV_DIR" "$WHEEL_DIR"
-          mkdir -p "$PKG_DIR" "$ARTIFACT_DIR"
+          rm -rf "$BUILD_DIR" "$ARTIFACT_DIR" "$VENV_DIR"
+          mkdir -p "$PKG_DIR" "$PKG_DIR/config" "$ARTIFACT_DIR"
 
           ${PYTHON_BIN} -m venv "$VENV_DIR"
 
@@ -54,34 +53,60 @@ jobs:
           fi
 
           "$ENV_PY" -m pip install --upgrade pip
-          "$ENV_PY" -m pip install --no-cache-dir -r requirements.txt
-          "$ENV_PY" -m pip download --only-binary=:all: --dest "$WHEEL_DIR" -r requirements.txt
+          "$ENV_PY" -m pip install --no-cache-dir -r config/requirements.txt
 
           "$ENV_PY" - <<'PY'
-          import importlib
-
           import fastapi
-          import uvicorn
-          import numpy
-          import trimesh
-          import pygltflib
           import ifcopenshell
+          import numpy
           import pxr
+          import pygltflib
+          import trimesh
+          import uvicorn
 
-          del fastapi, uvicorn, numpy, trimesh, pygltflib, ifcopenshell, pxr
+          del fastapi, ifcopenshell, numpy, pxr, pygltflib, trimesh, uvicorn
 
           print("[offline-bundle] dependencies import ok")
           PY
 
-          cp -a app runserver.py requirements.txt README.md run.sh run.command run.bat "$PKG_DIR"/
-          cp -a "$VENV_DIR" "$PKG_DIR/.offline_env"
-          cp -a "$WHEEL_DIR" "$PKG_DIR/.offline_wheels"
-          mkdir -p "$PKG_DIR/workspace/jobs"
+          cp -a app "$PKG_DIR/"
+          cp -a config/requirements.txt "$PKG_DIR/config/requirements.txt"
+          cp -a README.txt "$PKG_DIR/"
+          cp -a "$VENV_DIR" "$PKG_DIR/config/.offline_env"
+
+          if [ "${PACKAGE_LABEL}" = "macos-arm64" ]; then
+            cp -a start.py start.command "$PKG_DIR/"
+            chmod +x "$PKG_DIR/start.command"
+
+            FRAMEWORK_SRC="$("$ENV_PY" - <<'PY'
+          import sysconfig
+          from pathlib import Path
+
+          prefix = sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX")
+          framework = sysconfig.get_config_var("PYTHONFRAMEWORK")
+
+          if prefix and framework:
+              print(Path(prefix) / f"{framework}.framework")
+          PY
+            )"
+
+            if [ -z "${FRAMEWORK_SRC}" ] || [ ! -d "${FRAMEWORK_SRC}" ]; then
+              echo "[offline-bundle] Python.framework not found for macOS bundle"
+              exit 1
+            fi
+
+            mkdir -p "$PKG_DIR/config/.offline_frameworks"
+            cp -a "$FRAMEWORK_SRC" "$PKG_DIR/config/.offline_frameworks/"
+          else
+            cp -a run.bat "$PKG_DIR/"
+          fi
+
+          mkdir -p "$PKG_DIR/config/workspace/jobs"
 
           # Reduce size a bit. Keep only files needed for runtime.
-          find "$PKG_DIR/.offline_env" -type d -name "__pycache__" -prune -exec rm -rf {} +
-          find "$PKG_DIR/.offline_env" -type d -name "pip-wheel-metadata" -prune -exec rm -rf {} +
-          find "$PKG_DIR/.offline_env" -type f -name "*.pyc" -delete
+          find "$PKG_DIR/config/.offline_env" -type d -name "__pycache__" -prune -exec rm -rf {} +
+          find "$PKG_DIR/config/.offline_env" -type d -name "pip-wheel-metadata" -prune -exec rm -rf {} +
+          find "$PKG_DIR/config/.offline_env" -type f -name "*.pyc" -delete
           find "$PKG_DIR/app" -type d -name "__pycache__" -prune -exec rm -rf {} +
           find "$PKG_DIR/app" -type f -name "*.pyc" -delete
 

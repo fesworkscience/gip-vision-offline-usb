@@ -51,6 +51,7 @@ run.bat
 - `requirements.txt`,
 - `.offline_env` с установленными зависимостями,
 - `.offline_wheels` (локальный кеш wheels для восстановления окружения),
+- `.offline_frameworks/Python.framework` (только macOS, для запуска без установленного системного Python),
 - `run.sh`/`run.bat`.
 
 Сейчас публикация на теги `v*` делает **ровно 2 файла**:
@@ -58,7 +59,8 @@ run.bat
 - `gip-vision-offline-usb-windows-x64.zip`
 
 На каждом runner GitHub action скачивает платформенно-зависимые зависимости в окружение и упаковывает их в `.offline_env`, а также сохраняет wheels в `.offline_wheels`.  
-По умолчанию запускается `.offline_env`; если он оказался битым (например, из‑за привязки к пути Python на CI), будет восстановлен из `.offline_wheels`.
+Для macOS дополнительно упаковывается `Python.framework` в `.offline_frameworks`, чтобы запуск не зависел от Python на машине пользователя.  
+По умолчанию запускается `.offline_env`; если он оказался битым, будет восстановлен из `.offline_wheels`.
 
 Для локальной разработки можно временно разрешить bootstrap с интернетом:
 ```bash

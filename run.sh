@@ -8,9 +8,26 @@ ENV_DIR="${APP_ENV_DIR:-.offline_env}"
 WHEEL_DIR="${APP_OFFLINE_WHEELS:-.offline_wheels}"
 BOOT_DIR="${APP_BOOT_ENV_DIR:-.offline_boot_env}"
 BOOT_PYTHON="${APP_BOOT_PYTHON:-}"
+FRAMEWORK_DIR="${APP_OFFLINE_FRAMEWORKS_DIR:-.offline_frameworks}"
 HOST="${OFFLINE_HOST:-127.0.0.1}"
 PORT="${OFFLINE_PORT:-8765}"
 STRICT="${OFFLINE_STRICT:-1}"
+
+OFFLINE_DYLD_FRAMEWORK_PATH=""
+if [ -d "$FRAMEWORK_DIR/Python.framework" ]; then
+  OFFLINE_DYLD_FRAMEWORK_PATH="$(cd "$FRAMEWORK_DIR" && pwd)"
+fi
+
+run_python_cmd() {
+  local py="$1"
+  shift
+
+  if [ -n "$OFFLINE_DYLD_FRAMEWORK_PATH" ]; then
+    DYLD_FRAMEWORK_PATH="$OFFLINE_DYLD_FRAMEWORK_PATH${DYLD_FRAMEWORK_PATH:+:$DYLD_FRAMEWORK_PATH}" "$py" "$@"
+  else
+    "$py" "$@"
+  fi
+}
 
 is_python_ok() {
   local py="$1"
@@ -21,9 +38,9 @@ is_python_ok() {
   fi
 
   if [ -n "$extra_pythonpath" ]; then
-    PYTHONPATH="$extra_pythonpath${PYTHONPATH:+:$PYTHONPATH}" "$py" -c "import uvicorn" >/dev/null 2>&1
+    PYTHONPATH="$extra_pythonpath${PYTHONPATH:+:$PYTHONPATH}" run_python_cmd "$py" -c "import uvicorn" >/dev/null 2>&1
   else
-    "$py" -c "import uvicorn" >/dev/null 2>&1
+    run_python_cmd "$py" -c "import uvicorn" >/dev/null 2>&1
   fi
 }
 
@@ -34,7 +51,7 @@ is_python_311() {
     return 1
   fi
 
-  "$py" -c "import sys; exit(0 if sys.version_info[:2] == (3, 11) else 1)" >/dev/null 2>&1
+  run_python_cmd "$py" -c "import sys; exit(0 if sys.version_info[:2] == (3, 11) else 1)" >/dev/null 2>&1
 }
 
 resolve_boot_python() {
@@ -118,7 +135,20 @@ else
 fi
 
 if [ -n "$RUN_PYTHONPATH" ]; then
-  PYTHONPATH="$RUN_PYTHONPATH${PYTHONPATH:+:$PYTHONPATH}" exec "$PYTHON" runserver.py --host "$HOST" --port "$PORT" --no-reload "$@"
+  if [ -n "$OFFLINE_DYLD_FRAMEWORK_PATH" ]; then
+    exec env \
+      DYLD_FRAMEWORK_PATH="$OFFLINE_DYLD_FRAMEWORK_PATH${DYLD_FRAMEWORK_PATH:+:$DYLD_FRAMEWORK_PATH}" \
+      PYTHONPATH="$RUN_PYTHONPATH${PYTHONPATH:+:$PYTHONPATH}" \
+      "$PYTHON" runserver.py --host "$HOST" --port "$PORT" --no-reload "$@"
+  else
+    PYTHONPATH="$RUN_PYTHONPATH${PYTHONPATH:+:$PYTHONPATH}" exec "$PYTHON" runserver.py --host "$HOST" --port "$PORT" --no-reload "$@"
+  fi
 else
-  exec "$PYTHON" runserver.py --host "$HOST" --port "$PORT" --no-reload "$@"
+  if [ -n "$OFFLINE_DYLD_FRAMEWORK_PATH" ]; then
+    exec env \
+      DYLD_FRAMEWORK_PATH="$OFFLINE_DYLD_FRAMEWORK_PATH${DYLD_FRAMEWORK_PATH:+:$DYLD_FRAMEWORK_PATH}" \
+      "$PYTHON" runserver.py --host "$HOST" --port "$PORT" --no-reload "$@"
+  else
+    exec "$PYTHON" runserver.py --host "$HOST" --port "$PORT" --no-reload "$@"
+  fi
 fi

@@ -16,12 +16,15 @@ from .job_manager import JobManager
 
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = APP_DIR.parent
-WORKSPACE_DIR = PROJECT_DIR / "workspace"
+WORKSPACE_DIR = PROJECT_DIR / "config" / "workspace"
+STORAGE_ROOT = Path(os.getenv("OFFLINE_STORAGE_ROOT", str(PROJECT_DIR.parent))).resolve()
+IFC_DIR = STORAGE_ROOT / "ifc"
+USDZ_DIR = STORAGE_ROOT / "usdz"
 
-app = FastAPI(title="Offline IFC Converter", version="1.1.0")
+app = FastAPI(title="Offline IFC Converter", version="0.1.6")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
-job_manager = JobManager(base_dir=WORKSPACE_DIR)
+job_manager = JobManager(base_dir=WORKSPACE_DIR, input_dir=IFC_DIR, output_dir=USDZ_DIR)
 max_workers = int(os.getenv("OFFLINE_CONVERTER_MAX_WORKERS", "1"))
 executor = ThreadPoolExecutor(max_workers=max(1, max_workers))
 _futures_lock = threading.RLock()
@@ -84,18 +87,18 @@ def _run_job(job_id: str) -> None:
         if job_manager.is_cancel_requested(job_id):
             raise RuntimeError("Cancelled by user")
 
-        out_name = f"{Path(record.input_name or 'model').stem}.usdz"
-        final = record.work_dir / out_name
+        out_name = job_manager.output_file_name(record)
+        final = job_manager.final_output_path(record, out_name)
         if final.exists():
             final.unlink()
-        output_usdz.rename(final)
+        output_usdz.replace(final)
 
         total_seconds = round(time.time() - started, 3)
         stats = dict(stats or {})
         stats["total_seconds"] = total_seconds
 
         job_manager.with_log(record, f"Completed successfully: {final.name}; total_seconds={total_seconds}")
-        job_manager.set_done(job_id, output_name=final.name, metadata=stats)
+        job_manager.set_done(job_id, output_name=out_name, metadata=stats)
 
     except Exception as exc:
         rec = job_manager.get(job_id)
@@ -180,7 +183,7 @@ async def create_job(file: UploadFile = File(...)) -> JSONResponse:
         raise HTTPException(status_code=400, detail="Only .ifc files are supported")
 
     record = job_manager.create_job()
-    job_manager.update(record.id, input_name=filename)
+    record = job_manager.update(record.id, input_name=filename)
     input_path = job_manager.input_path(record)
 
     data = await file.read()
@@ -234,7 +237,7 @@ def download_output(job_id: str):
     if record.status != "done" or not record.output_name:
         raise HTTPException(status_code=409, detail="Job is not completed")
 
-    output_path = record.work_dir / record.output_name
+    output_path = job_manager.final_output_path(record, record.output_name)
     if not output_path.exists():
         raise HTTPException(status_code=404, detail="Output file not found")
 

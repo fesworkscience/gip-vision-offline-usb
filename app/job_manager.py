@@ -23,10 +23,14 @@ def _parse_datetime(raw: str) -> datetime:
 
 
 class JobManager:
-    def __init__(self, base_dir: Path):
-        self.base_dir = base_dir
+    def __init__(self, base_dir: Path, input_dir: Path | None = None, output_dir: Path | None = None):
+        self.base_dir = base_dir.resolve()
         self.jobs_dir = self.base_dir / "jobs"
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
+        self.input_dir = (input_dir or (self.base_dir / "ifc")).resolve()
+        self.output_dir = (output_dir or (self.base_dir / "usdz")).resolve()
+        self.input_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self._lock = threading.RLock()
         self._jobs: dict[str, JobRecord] = {}
@@ -49,7 +53,7 @@ class JobManager:
                     known_statuses = {"queued", "running", "cancelling", "done", "failed", "cancelled"}
                     if raw_status not in known_statuses:
                         output_name = payload.get("output_name")
-                        output_exists = bool(output_name and (folder / output_name).exists())
+                        output_exists = bool(output_name and (self.output_dir / str(output_name)).exists())
                         raw_status = "done" if output_exists else "queued"
 
                     record = JobRecord(
@@ -165,9 +169,25 @@ class JobManager:
             metadata=metadata,
         )
 
+    @staticmethod
+    def _sanitize_filename(name: str, default: str) -> str:
+        clean = (name or "").strip().replace("\\", "_").replace("/", "_")
+        clean = clean.replace("\n", "_").replace("\r", "_")
+        return clean or default
+
+    def input_file_name(self, record: JobRecord) -> str:
+        name = self._sanitize_filename(record.input_name or "input.ifc", "input.ifc")
+        if not name.lower().endswith(".ifc"):
+            name = f"{name}.ifc"
+        return f"{record.id}_{name}"
+
+    def output_file_name(self, record: JobRecord) -> str:
+        source = self._sanitize_filename(record.input_name or "model.ifc", "model.ifc")
+        stem = Path(source).stem or "model"
+        return f"{record.id}_{stem}.usdz"
+
     def input_path(self, record: JobRecord) -> Path:
-        assert record.work_dir is not None
-        return record.work_dir / "input.ifc"
+        return self.input_dir / self.input_file_name(record)
 
     def glb_path(self, record: JobRecord) -> Path:
         assert record.work_dir is not None
@@ -176,6 +196,10 @@ class JobManager:
     def output_path(self, record: JobRecord) -> Path:
         assert record.work_dir is not None
         return record.work_dir / "model.usdz"
+
+    def final_output_path(self, record: JobRecord, output_name: str | None = None) -> Path:
+        name = output_name or record.output_name or self.output_file_name(record)
+        return self.output_dir / name
 
     def log_path(self, record: JobRecord) -> Path:
         assert record.work_dir is not None
@@ -201,12 +225,20 @@ class JobManager:
     def _remove_job_files(self, record: JobRecord) -> None:
         if not record.work_dir or not record.work_dir.exists():
             return
-        for p in sorted(record.work_dir.rglob("*"), reverse=True):
+
+        jobs_root = self.jobs_dir.resolve()
+        work_dir = record.work_dir.resolve()
+
+        # Safety barrier: cleanup can only delete within config/workspace/jobs/<job_id>.
+        if work_dir == jobs_root or jobs_root not in work_dir.parents:
+            return
+
+        for p in sorted(work_dir.rglob("*"), reverse=True):
             if p.is_file() or p.is_symlink():
                 p.unlink(missing_ok=True)
             elif p.is_dir():
                 p.rmdir()
-        record.work_dir.rmdir()
+        work_dir.rmdir()
 
     def _write_meta(self, record: JobRecord) -> None:
         if not record.work_dir:
