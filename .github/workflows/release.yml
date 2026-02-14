@@ -106,51 +106,36 @@ jobs:
             cp -a start.py start.command "$PKG_DIR/"
             chmod +x "$PKG_DIR/start.command"
 
-            RELEASES_HTML_PATH="$ARTIFACT_DIR/python-standalone-releases-latest.html"
-            curl --fail --silent --show-error --location \
-              --connect-timeout 10 \
-              --max-time 45 \
-              --retry 2 \
-              --retry-all-errors \
-              --retry-delay 2 \
-              "https://github.com/astral-sh/python-build-standalone/releases/latest" \
-              -o "$RELEASES_HTML_PATH"
-            PYBS_URL="$("$ENV_PY" - "$RELEASES_HTML_PATH" <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          html_path = Path(sys.argv[1])
-          html = html_path.read_text(encoding="utf-8", errors="ignore")
-          pattern = re.compile(
-              r'href="([^"]*cpython-3\.11\.[^"]*-aarch64-apple-darwin-install_only(?:_stripped)?\.tar\.gz)"'
-          )
-          matches = pattern.findall(html)
-          if not matches:
-              raise SystemExit(1)
-
-          def score(item: str) -> tuple[int, str]:
-              name = item.rsplit("/", 1)[-1]
-              return (0 if name.endswith("install_only.tar.gz") else 1, name)
-
-          best = sorted(matches, key=score)[0]
-          if best.startswith("/"):
-              best = f"https://github.com{best}"
-          print(best)
-          PY
-            )"
+            PYBS_URL=""
+            for candidate in \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20260211/cpython-3.11.14+20260211-aarch64-apple-darwin-install_only_stripped.tar.gz" \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20260211/cpython-3.11.14+20260211-aarch64-apple-darwin-install_only.tar.gz" \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20260107/cpython-3.11.14+20260107-aarch64-apple-darwin-install_only_stripped.tar.gz" \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20260107/cpython-3.11.14+20260107-aarch64-apple-darwin-install_only.tar.gz" \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20251217/cpython-3.11.14+20251217-aarch64-apple-darwin-install_only_stripped.tar.gz" \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20251217/cpython-3.11.14+20251217-aarch64-apple-darwin-install_only.tar.gz" \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20251120/cpython-3.11.14+20251120-aarch64-apple-darwin-install_only_stripped.tar.gz" \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20251120/cpython-3.11.14+20251120-aarch64-apple-darwin-install_only.tar.gz" \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-aarch64-apple-darwin-install_only_stripped.tar.gz" \
+              "https://github.com/astral-sh/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-aarch64-apple-darwin-install_only.tar.gz"
+            do
+              if curl --fail --silent --show-error --location \
+                --connect-timeout 8 \
+                --max-time 120 \
+                --retry 1 \
+                --retry-all-errors \
+                --retry-delay 1 \
+                "$candidate" -o "$ARTIFACT_DIR/python-standalone.tar.gz"; then
+                PYBS_URL="$candidate"
+                break
+              fi
+            done
 
             if [ -z "${PYBS_URL}" ]; then
-              echo "[offline-bundle] Failed to resolve python-build-standalone asset"
+              echo "[offline-bundle] Failed to download a known python-build-standalone asset"
               exit 1
             fi
-
-            curl --fail --silent --show-error --location \
-              --retry 7 \
-              --retry-all-errors \
-              --retry-delay 2 \
-              --retry-max-time 240 \
-              "$PYBS_URL" -o "$ARTIFACT_DIR/python-standalone.tar.gz"
+            echo "[offline-bundle] Using portable Python: $PYBS_URL"
             mkdir -p "$PKG_DIR/config/.offline_python"
             tar -xzf "$ARTIFACT_DIR/python-standalone.tar.gz" -C "$PKG_DIR/config/.offline_python" --strip-components=1
 
