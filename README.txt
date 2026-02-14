@@ -5,6 +5,10 @@ Internet access policy:
 - Outbound network connections are blocked by the runtime launcher.
 - Only local access (localhost/127.0.0.1) is expected for browser UI.
 
+Runtime packaging:
+- macOS bundle includes portable Python runtime in config/.offline_python
+- start.command/start.py do one-time runtime preparation (not on every launch)
+
 Working folders:
 - Source IFC files are stored in flash drive root folder: ifc
 - Converted USDZ files are stored in flash drive root folder: usdz

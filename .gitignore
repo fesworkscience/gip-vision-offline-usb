@@ -7,3 +7,4 @@ __pycache__/
 
 workspace/
 config/workspace/
+config/.macos_runtime_prepared

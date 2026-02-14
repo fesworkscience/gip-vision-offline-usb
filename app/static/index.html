@@ -4,16 +4,27 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#f5f5f7" />
-  <title>Offline IFC → USDZ</title>
+  <title>GIP VISION: IFC → USDZ (ios)</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
   <div class="page-shell">
     <main class="container">
+      <section id="version-banner" class="version-banner hidden">
+        <span id="version-banner-text"></span>
+        <a id="version-banner-link" href="https://github.com/fesworkscience/gip-vision-offline-usb/releases" target="_blank" rel="noopener noreferrer">Открыть релизы</a>
+      </section>
+
       <header class="hero">
-        <p class="eyebrow">Конвертация IFC локально</p>
-        <h1>Offline IFC → USDZ Converter</h1>
-        <p>Загрузка, конвертация и получение `.usdz` без лишних зависимостей сервера и без Blender.</p>
+        <div class="hero-brand">
+          <img class="hero-logo" src="/static/logo_gip_vison.png" alt="GIP Vision Logo" />
+          <div class="hero-copy">
+            <p class="eyebrow">GIP Vision</p>
+            <h1>IFC → USDZ (ios)</h1>
+            <p id="hero-version" class="muted hidden">Версия сборки: -</p>
+            <p class="hero-subtitle">Сервер для оффлайн-подготовки BIM-моделей для открытия в ios-приложении</p>
+          </div>
+        </div>
       </header>
 
       <section class="card">
@@ -50,14 +61,36 @@
 
         <div class="actions">
           <button id="cancel-btn" class="danger hidden">Отменить</button>
-          <a id="download-link" class="button-link hidden" href="#">Скачать USDZ</a>
           <a id="logs-link" class="button-link hidden" href="#">Скачать лог</a>
         </div>
+        <div id="done-note" class="done-note hidden"></div>
       </section>
 
       <section class="card">
         <h2>Последние задачи</h2>
         <div id="jobs-list" class="jobs-list muted">Нет задач</div>
+      </section>
+
+      <section class="card contact-card">
+        <h2>Контакты разработчика</h2>
+        <div class="contact-grid">
+          <a class="contact-item" href="mailto:support@gip-group-solutions.su">
+            <span class="contact-label">Email</span>
+            <span class="contact-value">support@gip-group-solutions.su</span>
+          </a>
+          <a class="contact-item" href="https://t.me/gip_vision_raffle" target="_blank" rel="noopener noreferrer">
+            <span class="contact-label">Telegram</span>
+            <span class="contact-value">@gip_vision_raffle</span>
+          </a>
+          <a class="contact-item" href="https://github.com/fesworkscience/gip-vision-offline-usb/releases" target="_blank" rel="noopener noreferrer">
+            <span class="contact-label">GitHub Releases</span>
+            <span class="contact-value">github.com/fesworkscience/gip-vision-offline-usb</span>
+          </a>
+          <div class="contact-item">
+            <span class="contact-label">Примечание</span>
+            <span class="contact-value">Для поддержки укажите версию сборки из верхнего баннера.</span>
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -78,28 +111,157 @@
     const jobErrorEl = document.getElementById('job-error');
     const jobMetaEl = document.getElementById('job-meta');
     const progressBar = document.getElementById('progress-bar');
-    const downloadLink = document.getElementById('download-link');
     const logsLink = document.getElementById('logs-link');
     const cancelBtn = document.getElementById('cancel-btn');
     const jobsList = document.getElementById('jobs-list');
+    const doneNote = document.getElementById('done-note');
+    const versionBanner = document.getElementById('version-banner');
+    const versionBannerText = document.getElementById('version-banner-text');
+    const versionBannerLink = document.getElementById('version-banner-link');
+    const heroVersion = document.getElementById('hero-version');
 
     let selectedFile = null;
     let pollTimer = null;
     let currentJobId = null;
 
+    function escapeHtml(value) {
+      return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function formatFileSize(bytes) {
+      const size = Number(bytes || 0);
+      if (size <= 0) return '0 KB';
+      if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
     function setSelectedFile(file) {
       selectedFile = file;
       if (!file) {
-        selectedFileEl.textContent = '';
+        selectedFileEl.innerHTML = '';
         startBtn.disabled = true;
         return;
       }
-      selectedFileEl.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
-      startBtn.disabled = !file.name.toLowerCase().endsWith('.ifc');
+
+      const isIfc = file.name.toLowerCase().endsWith('.ifc');
+      const extRaw = file.name.includes('.') ? file.name.split('.').pop() : '';
+      const ext = escapeHtml((extRaw || 'FILE').toUpperCase().slice(0, 8));
+      const fileName = escapeHtml(file.name);
+      const fileSize = formatFileSize(file.size);
+
+      selectedFileEl.innerHTML = `
+        <div class="selected-file-card ${isIfc ? '' : 'selected-file-card-invalid'}">
+          <div class="selected-file-main">
+            <span class="selected-file-chip">${ext}</span>
+            <div class="selected-file-text">
+              <strong title="${fileName}">${fileName}</strong>
+              <span>${fileSize}</span>
+            </div>
+          </div>
+          <button id="remove-file-btn" type="button" class="selected-file-remove">Удалить</button>
+        </div>
+      `;
+
+      const removeBtn = document.getElementById('remove-file-btn');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+          fileInput.value = '';
+          setSelectedFile(null);
+        });
+      }
+
+      startBtn.disabled = !isIfc;
     }
 
     function pretty(obj) {
       return JSON.stringify(obj || {}, null, 2);
+    }
+
+    function normalizeVersion(input) {
+      return String(input || '').trim().replace(/^v/i, '');
+    }
+
+    function compareVersion(a, b) {
+      const left = normalizeVersion(a).split(/[+-]/)[0].split('.').map((x) => parseInt(x, 10) || 0);
+      const right = normalizeVersion(b).split(/[+-]/)[0].split('.').map((x) => parseInt(x, 10) || 0);
+      const n = Math.max(left.length, right.length);
+      for (let i = 0; i < n; i += 1) {
+        const l = left[i] || 0;
+        const r = right[i] || 0;
+        if (l > r) return 1;
+        if (l < r) return -1;
+      }
+      return 0;
+    }
+
+    async function fetchLocalVersion() {
+      const res = await fetch('/api/version');
+      if (!res.ok) throw new Error('Не удалось получить локальную версию');
+      return res.json();
+    }
+
+    async function fetchLatestRelease() {
+      const res = await fetch('https://api.github.com/repos/fesworkscience/gip-vision-offline-usb/releases/latest');
+      if (!res.ok) throw new Error('Не удалось получить latest release');
+      return res.json();
+    }
+
+    function renderVersionBanner(message, isUpdate) {
+      versionBanner.classList.remove('hidden', 'version-banner-update', 'version-banner-ok');
+      versionBanner.classList.add(isUpdate ? 'version-banner-update' : 'version-banner-ok');
+      versionBannerText.textContent = message;
+    }
+
+    async function loadVersionBanner() {
+      let local;
+      try {
+        local = await fetchLocalVersion();
+      } catch (_) {
+        heroVersion.classList.remove('hidden');
+        heroVersion.textContent = 'Версия сборки: ошибка чтения';
+        renderVersionBanner('Ошибка: не удалось прочитать config/version.yaml.', false);
+        return;
+      }
+
+      const currentTag = String(local.tag || '').trim();
+      const currentVersion = String(local.version || '').trim() || normalizeVersion(currentTag);
+      if (!currentVersion) {
+        heroVersion.classList.remove('hidden');
+        heroVersion.textContent = 'Версия сборки: не задана';
+        renderVersionBanner('Ошибка: в config/version.yaml отсутствует поле version.', false);
+        return;
+      }
+      const releasesUrl = local.releases_url || 'https://github.com/fesworkscience/gip-vision-offline-usb/releases';
+      versionBannerLink.href = releasesUrl;
+      heroVersion.classList.remove('hidden');
+      heroVersion.textContent = `Версия сборки: ${currentVersion}`;
+
+      try {
+        const latest = await fetchLatestRelease();
+        const latestTag = latest.tag_name || '';
+        const latestVersion = normalizeVersion(latestTag) || '';
+        if (!latestVersion) {
+          renderVersionBanner(`Текущая версия: ${currentVersion}. Не удалось определить latest release.`, false);
+          return;
+        }
+        const cmp = compareVersion(currentVersion, latestVersion);
+
+        if (cmp < 0) {
+          renderVersionBanner(
+            `Доступно обновление: текущая ${currentVersion}, последняя ${latestVersion}. Нужно скачать релиз и распаковать его в корень флеш-носителя.`,
+            true
+          );
+        } else {
+          renderVersionBanner(`Текущая версия: ${currentVersion}. Установлена последняя версия.`, false);
+        }
+      } catch (_) {
+        renderVersionBanner(`Текущая версия: ${currentVersion}. Не удалось проверить latest release.`, false);
+      }
     }
 
     fileInput.addEventListener('change', (e) => {
@@ -181,10 +343,19 @@
       }
 
       if (job.status === 'done') {
-        downloadLink.classList.remove('hidden');
-        downloadLink.href = `/api/jobs/${job.id}/download`;
+        const outputPath = job.output_path || (
+          job.usdz_dir && job.output_name ? `${job.usdz_dir}/${job.output_name}` : (job.output_name || '')
+        );
+        const safePath = escapeHtml(outputPath || 'Недоступен');
+        doneNote.classList.remove('hidden');
+        doneNote.innerHTML = `
+          <strong>Конвертация успешно завершена.</strong><br>
+          Файл автоматически сохранен в папку USDZ: <code>${safePath}</code><br>
+          Вы можете извлечь флешку и вставить в iPhone. Модель появится в приложении GIP VISION в закладке Offline в нижнем меню.
+        `;
       } else {
-        downloadLink.classList.add('hidden');
+        doneNote.classList.add('hidden');
+        doneNote.innerHTML = '';
       }
     }
 
@@ -294,6 +465,7 @@
       }
     });
 
+    loadVersionBanner();
     reloadJobsList();
   </script>
 </body>

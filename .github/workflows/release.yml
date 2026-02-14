@@ -32,14 +32,35 @@ jobs:
       - name: Build portable zip
         env:
           PACKAGE_LABEL: ${{ matrix.label }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           PYTHON_BIN=python
           ROOT_DIR="${GITHUB_WORKSPACE}"
           BUILD_DIR="${ROOT_DIR}/_bundle"
-          PKG_DIR="${BUILD_DIR}/gip-vision-offline-usb-${PACKAGE_LABEL}"
           VENV_DIR="${ROOT_DIR}/_bundle_env"
           ARTIFACT_DIR="${ROOT_DIR}/artifacts"
+
+          RAW_REF_NAME="${GITHUB_REF_NAME:-}"
+          if [ -n "${RAW_REF_NAME}" ]; then
+            VERSION_TAG="${RAW_REF_NAME}"
+          else
+            VERSION_TAG="v0.0.0-dev"
+          fi
+          case "${VERSION_TAG}" in
+            v*) ;;
+            *) VERSION_TAG="v${VERSION_TAG}" ;;
+          esac
+          VERSION_NUMBER="${VERSION_TAG#v}"
+
+          case "${PACKAGE_LABEL}" in
+            macos-arm64) PACKAGE_OS="macos" ;;
+            windows-x64) PACKAGE_OS="windows" ;;
+            *) PACKAGE_OS="${PACKAGE_LABEL}" ;;
+          esac
+
+          PACKAGE_NAME="gip-vision-offline-usb-${PACKAGE_OS}-${VERSION_TAG}"
+          PKG_DIR="${BUILD_DIR}/${PACKAGE_NAME}"
 
           rm -rf "$BUILD_DIR" "$ARTIFACT_DIR" "$VENV_DIR"
           mkdir -p "$PKG_DIR" "$PKG_DIR/config" "$ARTIFACT_DIR"
@@ -74,29 +95,84 @@ jobs:
           cp -a README.txt "$PKG_DIR/"
           cp -a "$VENV_DIR" "$PKG_DIR/config/.offline_env"
 
+          {
+            echo "tag: ${VERSION_TAG}"
+            echo "version: ${VERSION_NUMBER}"
+            echo "built_at_utc: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            echo "commit: ${GITHUB_SHA:-unknown}"
+            echo "repository: fesworkscience/gip-vision-offline-usb"
+            echo "releases_url: https://github.com/fesworkscience/gip-vision-offline-usb/releases"
+          } > "$PKG_DIR/config/version.yaml"
+
           if [ "${PACKAGE_LABEL}" = "macos-arm64" ]; then
             cp -a start.py start.command "$PKG_DIR/"
             chmod +x "$PKG_DIR/start.command"
 
-            FRAMEWORK_SRC="$("$ENV_PY" - <<'PY'
-          import sysconfig
-          from pathlib import Path
+            PYBS_URL="$("$ENV_PY" - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          import urllib.request
 
-          prefix = sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX")
-          framework = sysconfig.get_config_var("PYTHONFRAMEWORK")
+          url = "https://api.github.com/repos/astral-sh/python-build-standalone/releases?per_page=30"
+          headers = {"Accept": "application/vnd.github+json"}
+          token = os.getenv("GH_TOKEN", "")
+          if token:
+              headers["Authorization"] = f"Bearer {token}"
 
-          if prefix and framework:
-              print(Path(prefix) / f"{framework}.framework")
+          req = urllib.request.Request(url, headers=headers)
+          with urllib.request.urlopen(req, timeout=60) as resp:
+              releases = json.load(resp)
+
+          pattern = re.compile(r"^cpython-3\.11\..*-aarch64-apple-darwin-install_only(?:_stripped)?\.tar\.gz$")
+          for release in releases:
+              assets = release.get("assets") or []
+              preferred = sorted(
+                  assets,
+                  key=lambda a: 0
+                  if a.get("name", "").endswith("install_only.tar.gz")
+                  else 1,
+              )
+              for asset in preferred:
+                  name = asset.get("name", "")
+                  if pattern.match(name):
+                      print(asset.get("browser_download_url", ""))
+                      raise SystemExit(0)
+
+          raise SystemExit(1)
           PY
             )"
 
-            if [ -z "${FRAMEWORK_SRC}" ] || [ ! -d "${FRAMEWORK_SRC}" ]; then
-              echo "[offline-bundle] Python.framework not found for macOS bundle"
+            if [ -z "${PYBS_URL}" ]; then
+              echo "[offline-bundle] Failed to resolve python-build-standalone asset"
               exit 1
             fi
 
-            mkdir -p "$PKG_DIR/config/.offline_frameworks"
-            cp -a "$FRAMEWORK_SRC" "$PKG_DIR/config/.offline_frameworks/"
+            curl -fsSL "$PYBS_URL" -o "$ARTIFACT_DIR/python-standalone.tar.gz"
+            mkdir -p "$PKG_DIR/config/.offline_python"
+            tar -xzf "$ARTIFACT_DIR/python-standalone.tar.gz" -C "$PKG_DIR/config/.offline_python" --strip-components=1
+
+            PORTABLE_PY="$PKG_DIR/config/.offline_python/bin/python3.11"
+            if [ ! -x "$PORTABLE_PY" ]; then
+              PORTABLE_PY="$PKG_DIR/config/.offline_python/bin/python3"
+            fi
+            if [ ! -x "$PORTABLE_PY" ]; then
+              echo "[offline-bundle] Portable Python binary not found after extraction"
+              exit 1
+            fi
+
+            PYTHONHOME="$PKG_DIR/config/.offline_python" \
+            PYTHONPATH="$PKG_DIR/config/.offline_env/lib/python3.11/site-packages" \
+            "$PORTABLE_PY" - <<'PY'
+          import ssl
+          import _socket
+          import fastapi
+          import ifcopenshell
+          import pxr
+          import uvicorn
+          print("[offline-bundle] macOS standalone runtime import ok")
+          PY
           else
             cp -a run.bat "$PKG_DIR/"
           fi
@@ -109,6 +185,12 @@ jobs:
           find "$PKG_DIR/config/.offline_env" -type f -name "*.pyc" -delete
           find "$PKG_DIR/app" -type d -name "__pycache__" -prune -exec rm -rf {} +
           find "$PKG_DIR/app" -type f -name "*.pyc" -delete
+          rm -rf "$PKG_DIR/tests"
+
+          if find "$PKG_DIR" -type f \( -path "*/tests/*" -o -name "test_*.py" \) -print -quit | grep -q .; then
+            echo "[offline-bundle] test files leaked into release package"
+            exit 1
+          fi
 
           # Create one zip per OS
           python - <<'PY'
@@ -117,13 +199,13 @@ jobs:
           from pathlib import Path
 
           build_dir = Path("_bundle")
-          label = os.environ["PACKAGE_LABEL"]
-          archive = Path("artifacts") / f"gip-vision-offline-usb-{label}"
+          package_name = os.environ["PACKAGE_NAME"]
+          archive = Path("artifacts") / package_name
           shutil.make_archive(
               str(archive),
               "zip",
               root_dir=str(build_dir),
-              base_dir=f"gip-vision-offline-usb-{label}",
+              base_dir=package_name,
           )
           PY
 

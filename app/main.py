@@ -16,12 +16,15 @@ from .job_manager import JobManager
 
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = APP_DIR.parent
+CONFIG_DIR = PROJECT_DIR / "config"
 WORKSPACE_DIR = PROJECT_DIR / "config" / "workspace"
 STORAGE_ROOT = Path(os.getenv("OFFLINE_STORAGE_ROOT", str(PROJECT_DIR.parent))).resolve()
 IFC_DIR = STORAGE_ROOT / "ifc"
 USDZ_DIR = STORAGE_ROOT / "usdz"
+VERSION_FILE = CONFIG_DIR / "version.yaml"
+RELEASES_URL = "https://github.com/fesworkscience/gip-vision-offline-usb/releases"
 
-app = FastAPI(title="Offline IFC Converter", version="0.1.6")
+app = FastAPI(title="Offline IFC Converter", version="1.0.0")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
 job_manager = JobManager(base_dir=WORKSPACE_DIR, input_dir=IFC_DIR, output_dir=USDZ_DIR)
@@ -40,6 +43,27 @@ def _sanitize_filename(name: str) -> str:
     clean = name.strip().replace("\\", "_").replace("/", "_")
     clean = clean.replace("\n", "_").replace("\r", "_")
     return clean or "model.ifc"
+
+
+def _read_version_yaml() -> dict[str, str]:
+    if not VERSION_FILE.exists():
+        return {}
+
+    result: dict[str, str] = {}
+    try:
+        for raw_line in VERSION_FILE.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            key = key.strip()
+            value = value.strip().strip("'").strip('"')
+            if key:
+                result[key] = value
+    except Exception:
+        return {}
+
+    return result
 
 
 def _cleanup_loop() -> None:
@@ -166,6 +190,23 @@ def diagnostics() -> JSONResponse:
     return JSONResponse(get_diagnostics())
 
 
+@app.get("/api/version")
+def version() -> JSONResponse:
+    payload = _read_version_yaml()
+    current_tag = payload.get("tag", "")
+    current_version = payload.get("version", "")
+    return JSONResponse(
+        {
+            "tag": current_tag,
+            "version": current_version,
+            "built_at_utc": payload.get("built_at_utc", ""),
+            "commit": payload.get("commit", ""),
+            "repository": payload.get("repository", "fesworkscience/gip-vision-offline-usb"),
+            "releases_url": payload.get("releases_url", RELEASES_URL),
+        }
+    )
+
+
 @app.get("/api/jobs")
 def list_jobs(limit: int = 20) -> JSONResponse:
     jobs = [item.to_dict() for item in job_manager.list_jobs(limit=limit)]
@@ -209,7 +250,11 @@ def get_job(job_id: str) -> JSONResponse:
     record = job_manager.get(job_id)
     if not record:
         raise HTTPException(status_code=404, detail="Job not found")
-    return JSONResponse(record.to_dict())
+    payload = record.to_dict()
+    payload["usdz_dir"] = str(job_manager.output_dir)
+    if record.output_name:
+        payload["output_path"] = str(job_manager.final_output_path(record, record.output_name))
+    return JSONResponse(payload)
 
 
 @app.post("/api/jobs/{job_id}/cancel")

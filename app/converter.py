@@ -10,17 +10,59 @@ from typing import Iterable
 from .glb_to_usdz_fast import glb_to_usdz_fast
 from .job_manager import CancelCheck, ProgressCallback
 
+APP_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = APP_DIR.parent
+CONFIG_DIR = PROJECT_DIR / "config"
+WORKSPACE_DIR = CONFIG_DIR / "workspace"
+STORAGE_ROOT = Path(os.getenv("OFFLINE_STORAGE_ROOT", str(PROJECT_DIR.parent))).resolve()
+IFC_DIR = STORAGE_ROOT / "ifc"
+USDZ_DIR = STORAGE_ROOT / "usdz"
 
-def resolve_ifcconvert_path() -> str | None:
+
+def _is_executable_file(path: Path) -> bool:
+    if not path.exists() or path.is_dir():
+        return False
+    if os.name == "nt":
+        return path.suffix.lower() in {".exe", ".bat", ".cmd"} or os.access(path, os.X_OK)
+    return os.access(path, os.X_OK)
+
+
+def _ifcconvert_candidate_paths() -> list[Path]:
+    candidates: list[Path] = []
     explicit = os.getenv("IFC_CONVERT_PATH", "").strip()
     if explicit:
-        if Path(explicit).exists():
-            return explicit
-        return None
+        candidates.append(Path(explicit))
 
-    found = shutil.which("IfcConvert")
-    if found:
-        return found
+    for name in ("IfcConvert", "ifcconvert", "IfcConvert.exe", "ifcconvert.exe"):
+        found = shutil.which(name)
+        if found:
+            candidates.append(Path(found))
+
+    local_relatives = [
+        Path("config/tools/IfcConvert"),
+        Path("config/tools/IfcConvert.exe"),
+        Path("tools/IfcConvert"),
+        Path("tools/IfcConvert.exe"),
+        Path("IfcConvert"),
+        Path("IfcConvert.exe"),
+    ]
+    for rel in local_relatives:
+        candidates.append((PROJECT_DIR / rel).resolve())
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for item in candidates:
+        key = str(item)
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique
+
+
+def resolve_ifcconvert_path() -> str | None:
+    for candidate in _ifcconvert_candidate_paths():
+        if _is_executable_file(candidate):
+            return str(candidate)
 
     return None
 
@@ -39,10 +81,35 @@ def _supports_ifcopenshell_glb() -> tuple[bool, str | None]:
 
 
 def get_diagnostics() -> dict:
+    ifc_candidates = _ifcconvert_candidate_paths()
     diagnostics = {
-        "ifcconvert": {"ok": False, "path": None, "version": None, "error": None},
+        "ifcconvert": {
+            "ok": False,
+            "path": None,
+            "version": None,
+            "error": None,
+            "candidates": [
+                {
+                    "path": str(path),
+                    "exists": path.exists(),
+                    "executable": _is_executable_file(path),
+                }
+                for path in ifc_candidates
+            ],
+        },
         "ifcopenshell_glb": {"ok": False, "error": None},
         "pxr": {"ok": False, "version": None, "error": None},
+        "paths": {
+            "project_dir": str(PROJECT_DIR),
+            "config_dir": str(CONFIG_DIR),
+            "workspace_dir": str(WORKSPACE_DIR),
+            "storage_root": str(STORAGE_ROOT),
+            "ifc_dir": str(IFC_DIR),
+            "ifc_dir_exists": IFC_DIR.exists(),
+            "usdz_dir": str(USDZ_DIR),
+            "usdz_dir_exists": USDZ_DIR.exists(),
+            "ifc_convert_path_env": os.getenv("IFC_CONVERT_PATH", "").strip() or None,
+        },
     }
 
     try:
@@ -53,8 +120,10 @@ def get_diagnostics() -> dict:
             output = (result.stdout or result.stderr or "").strip().splitlines()
             diagnostics["ifcconvert"]["version"] = output[0] if output else "unknown"
             diagnostics["ifcconvert"]["ok"] = result.returncode == 0
+            if result.returncode != 0:
+                diagnostics["ifcconvert"]["error"] = (result.stderr or result.stdout or "").strip()[:600] or "IfcConvert --version failed"
         else:
-            diagnostics["ifcconvert"]["error"] = "IfcConvert not found in PATH"
+            diagnostics["ifcconvert"]["error"] = "IfcConvert not found in bundle paths or PATH"
     except Exception as exc:
         diagnostics["ifcconvert"]["error"] = str(exc)
 
