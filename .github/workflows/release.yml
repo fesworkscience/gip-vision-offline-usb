@@ -86,7 +86,6 @@ jobs:
           python - <<'PY'
           import os
           import shutil
-          import zipfile
           from pathlib import Path
 
           build_dir = Path("_bundle")
@@ -97,7 +96,6 @@ jobs:
               "zip",
               root_dir=str(build_dir),
               base_dir=f"gip-vision-offline-usb-{label}",
-              compression=zipfile.ZIP_DEFLATED,
           )
           PY
 
