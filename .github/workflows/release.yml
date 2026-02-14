@@ -9,16 +9,17 @@ jobs:
   build:
     name: Build ${{ matrix.label }} bundle
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-14
             label: macos-silicon
-            shell: bash
           - os: windows-latest
             label: windows-x64
-            shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,7 +32,6 @@ jobs:
       - name: Build portable zip
         env:
           PACKAGE_LABEL: ${{ matrix.label }}
-        shell: ${{ matrix.shell }}
         run: |
           set -euo pipefail
           PYTHON_BIN=python
