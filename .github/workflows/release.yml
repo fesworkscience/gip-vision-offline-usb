@@ -17,7 +17,7 @@ jobs:
       matrix:
         include:
           - os: macos-14
-            label: macos-silicon
+            label: macos-arm64
           - os: windows-latest
             label: windows-x64
     steps:
@@ -40,8 +40,9 @@ jobs:
           PKG_DIR="${BUILD_DIR}/gip-vision-offline-usb-${PACKAGE_LABEL}"
           VENV_DIR="${ROOT_DIR}/_bundle_env"
           ARTIFACT_DIR="${ROOT_DIR}/artifacts"
+          WHEEL_DIR="${ROOT_DIR}/_bundle_wheels"
 
-          rm -rf "$BUILD_DIR" "$ARTIFACT_DIR" "$VENV_DIR"
+          rm -rf "$BUILD_DIR" "$ARTIFACT_DIR" "$VENV_DIR" "$WHEEL_DIR"
           mkdir -p "$PKG_DIR" "$ARTIFACT_DIR"
 
           ${PYTHON_BIN} -m venv "$VENV_DIR"
@@ -54,6 +55,7 @@ jobs:
 
           "$ENV_PY" -m pip install --upgrade pip
           "$ENV_PY" -m pip install --no-cache-dir -r requirements.txt
+          "$ENV_PY" -m pip download --only-binary=:all: --dest "$WHEEL_DIR" -r requirements.txt
 
           "$ENV_PY" - <<'PY'
           import importlib
@@ -71,8 +73,9 @@ jobs:
           print("[offline-bundle] dependencies import ok")
           PY
 
-          cp -a app runserver.py requirements.txt README.md run.sh run.bat "$PKG_DIR"/
+          cp -a app runserver.py requirements.txt README.md run.sh run.command run.bat "$PKG_DIR"/
           cp -a "$VENV_DIR" "$PKG_DIR/.offline_env"
+          cp -a "$WHEEL_DIR" "$PKG_DIR/.offline_wheels"
           mkdir -p "$PKG_DIR/workspace/jobs"
 
           # Reduce size a bit. Keep only files needed for runtime.

@@ -32,8 +32,11 @@
 ### macOS/Linux
 ```bash
 cd gip-vision-offline-usb
+chmod +x run.sh run.command
 ./run.sh
+./run.command
 ```
+Если хотите запускать мышкой — дважды кликните `run.command`.
 
 ### Windows
 ```bat
@@ -41,19 +44,21 @@ cd gip-vision-offline-usb
 run.bat
 ```
 
-`run.sh`/`run.bat` в релизном zip используют `.offline_env` и запускаются без `pip install`.
+`run.sh`/`run.command` (macOS) и `run.bat` в релизном zip используют `.offline_env`, а если он неработоспособен — соберут локальное окружение из `.offline_wheels` без интернета.
 
 Релизные zip собираются через GitHub Action и включают:
 - приложение,
 - `requirements.txt`,
-- готовый `.offline_env` c установленными зависимостями,
+- `.offline_env` с установленными зависимостями,
+- `.offline_wheels` (локальный кеш wheels для восстановления окружения),
 - `run.sh`/`run.bat`.
 
 Сейчас публикация на теги `v*` делает **ровно 2 файла**:
-- `gip-vision-offline-usb-macos-silicon.zip` (Apple Silicon: M1/M2/M3)
+- `gip-vision-offline-usb-macos-arm64.zip` (Apple Silicon: M1/M2/M3)
 - `gip-vision-offline-usb-windows-x64.zip`
 
-На каждом runner GitHub action скачивает платформенно-зависимые зависимости в соответствующее окружение и упаковывает их в `.offline_env`, поэтому после распаковки пользователь запускает только `run.sh` или `run.bat`. Скрипт по умолчанию (`OFFLINE_STRICT=1`) требует наличие `.offline_env` и не делает `pip install`.
+На каждом runner GitHub action скачивает платформенно-зависимые зависимости в окружение и упаковывает их в `.offline_env`, а также сохраняет wheels в `.offline_wheels`.  
+По умолчанию запускается `.offline_env`; если он оказался битым (например, из‑за привязки к пути Python на CI), будет восстановлен из `.offline_wheels`.
 
 Для локальной разработки можно временно разрешить bootstrap с интернетом:
 ```bash
