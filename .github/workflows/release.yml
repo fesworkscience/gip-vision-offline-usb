@@ -1,0 +1,129 @@
+name: Release offline bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }} bundle
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            label: macos-silicon
+            shell: bash
+          - os: windows-latest
+            label: windows-x64
+            shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build portable zip
+        env:
+          PACKAGE_LABEL: ${{ matrix.label }}
+        shell: ${{ matrix.shell }}
+        run: |
+          set -euo pipefail
+          PYTHON_BIN=python
+          ROOT_DIR="${GITHUB_WORKSPACE}"
+          BUILD_DIR="${ROOT_DIR}/_bundle"
+          PKG_DIR="${BUILD_DIR}/gip-vision-offline-usb-${PACKAGE_LABEL}"
+          VENV_DIR="${ROOT_DIR}/_bundle_env"
+          ARTIFACT_DIR="${ROOT_DIR}/artifacts"
+
+          rm -rf "$BUILD_DIR" "$ARTIFACT_DIR" "$VENV_DIR"
+          mkdir -p "$PKG_DIR" "$ARTIFACT_DIR"
+
+          ${PYTHON_BIN} -m venv "$VENV_DIR"
+
+          if [ -f "$VENV_DIR/bin/python" ]; then
+            ENV_PY="$VENV_DIR/bin/python"
+          else
+            ENV_PY="$VENV_DIR/Scripts/python.exe"
+          fi
+
+          "$ENV_PY" -m pip install --upgrade pip
+          "$ENV_PY" -m pip install --no-cache-dir -r requirements.txt
+
+          "$ENV_PY" - <<'PY'
+          import importlib
+
+          import fastapi
+          import uvicorn
+          import numpy
+          import trimesh
+          import pygltflib
+          import ifcopenshell
+          import pxr
+
+          del fastapi, uvicorn, numpy, trimesh, pygltflib, ifcopenshell, pxr
+
+          print("[offline-bundle] dependencies import ok")
+          PY
+
+          cp -a app runserver.py requirements.txt README.md run.sh run.bat "$PKG_DIR"/
+          cp -a "$VENV_DIR" "$PKG_DIR/.offline_env"
+          mkdir -p "$PKG_DIR/workspace/jobs"
+
+          # Reduce size a bit. Keep only files needed for runtime.
+          find "$PKG_DIR/.offline_env" -type d -name "__pycache__" -prune -exec rm -rf {} +
+          find "$PKG_DIR/.offline_env" -type d -name "pip-wheel-metadata" -prune -exec rm -rf {} +
+          find "$PKG_DIR/.offline_env" -type f -name "*.pyc" -delete
+          find "$PKG_DIR/app" -type d -name "__pycache__" -prune -exec rm -rf {} +
+          find "$PKG_DIR/app" -type f -name "*.pyc" -delete
+
+          # Create one zip per OS
+          python - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+
+          build_dir = Path("_bundle")
+          label = os.environ["PACKAGE_LABEL"]
+          archive = Path("artifacts") / f"gip-vision-offline-usb-{label}"
+          shutil.make_archive(
+              str(archive),
+              "zip",
+              root_dir=str(build_dir),
+              base_dir=f"gip-vision-offline-usb-{label}",
+              compression=shutil.ZIP_DEFLATED,
+          )
+          PY
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-release-${{ matrix.label }}
+          path: artifacts/*.zip
+          retention-days: 30
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: all-artifacts/*
+          generate_release_notes: true
+          make_latest: latest

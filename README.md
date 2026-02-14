@@ -19,7 +19,7 @@
 - `app/main.py` — FastAPI приложение
 - `app/job_manager.py` — реестр задач и файловая модель
 - `app/converter.py` — fast pipeline + diagnostics
-- `app/templates/index.html` — UI
+- `app/static/index.html` — UI
 - `workspace/jobs/` — данные задач
 
 ## Требования
@@ -31,23 +31,47 @@
 ## Быстрый запуск
 ### macOS/Linux
 ```bash
-cd offline_ifc_converter
+cd gip-vision-offline-usb
 ./run.sh
 ```
 
 ### Windows
 ```bat
-cd offline_ifc_converter
+cd gip-vision-offline-usb
+run.bat
+```
+
+`run.sh`/`run.bat` в релизном zip используют `.offline_env` и запускаются без `pip install`.
+
+Релизные zip собираются через GitHub Action и включают:
+- приложение,
+- `requirements.txt`,
+- готовый `.offline_env` c установленными зависимостями,
+- `run.sh`/`run.bat`.
+
+Сейчас публикация на теги `v*` делает **ровно 2 файла**:
+- `gip-vision-offline-usb-macos-silicon.zip` (Apple Silicon: M1/M2/M3)
+- `gip-vision-offline-usb-windows-x64.zip`
+
+На каждом runner GitHub action скачивает платформенно-зависимые зависимости в соответствующее окружение и упаковывает их в `.offline_env`, поэтому после распаковки пользователь запускает только `run.sh` или `run.bat`. Скрипт по умолчанию (`OFFLINE_STRICT=1`) требует наличие `.offline_env` и не делает `pip install`.
+
+Для локальной разработки можно временно разрешить bootstrap с интернетом:
+```bash
+OFFLINE_STRICT=0 ./run.sh
+```
+или
+```bat
+set OFFLINE_STRICT=0
 run.bat
 ```
 
 ## Ручной запуск
 ```bash
-cd offline_ifc_converter
+cd gip-vision-offline-usb
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 127.0.0.1 --port 8765 --reload
+python runserver.py --host 127.0.0.1 --port 8765
 ```
 
 Открыть в браузере: `http://127.0.0.1:8765`
